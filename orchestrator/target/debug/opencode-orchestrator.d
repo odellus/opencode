@@ -1,0 +1,1 @@
+/home/user/opencode/orchestrator/target/debug/opencode-orchestrator: /home/user/opencode/orchestrator/src/detector.rs /home/user/opencode/orchestrator/src/llm.rs /home/user/opencode/orchestrator/src/main.rs /home/user/opencode/orchestrator/src/opencode.rs /home/user/opencode/orchestrator/src/orchestrator.rs /home/user/opencode/orchestrator/src/types.rs
