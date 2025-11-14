@@ -5,6 +5,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     detector::AntiPatternDetector,
+    inverter::MessageInverter,
     llm::LLMClient,
     opencode::OpencodeClient,
     types::*,
@@ -235,11 +236,101 @@ impl Orchestrator {
         messages: &[Message],
         file_status: &[FileStatus],
     ) -> Result<WorkAnalysis> {
-        let has_changes = file_status
-            .iter()
-            .any(|f| f.status == "modified" || f.status == "added");
+        info!("Analyzing work using inverted message approach...");
 
-        // Simplified test check (look for test failures in bash outputs)
+        // 1. Write inverted session to markdown
+        let markdown_path = MessageInverter::write_session_file(messages, task_description, task_id).await?;
+        info!("Wrote inverted session to: {}", markdown_path.display());
+
+        // 2. Create orchestrator session with custom agent
+        let orch_session = self.opencode.create_session(Some("orchestrator".to_string())).await?;
+        info!("Created orchestrator review session: {}", orch_session.id);
+
+        // 3. Send critique prompt
+        let critique_prompt = MessageInverter::create_critique_prompt(&markdown_path, task_description);
+        self.opencode.send_message(&orch_session.id, critique_prompt).await?;
+
+        // 4. Wait for orchestrator to analyze
+        loop {
+            sleep(Duration::from_secs(3)).await;
+
+            let is_idle = self.opencode.is_doer_idle(&orch_session.id).await?;
+            if !is_idle {
+                continue;
+            }
+
+            // Get orchestrator's response
+            let orch_messages = self.opencode.get_messages(&orch_session.id).await?;
+            let last_msg = orch_messages.last().context("No orchestrator response")?;
+
+            if last_msg.info.role == "assistant" {
+                let response = Self::extract_text(&last_msg.parts);
+                info!("Orchestrator response: {}", response);
+
+                // Parse structured response
+                let analysis = Self::parse_critique_response(&response, retry_count, messages, file_status, task_id, session_id)?;
+
+                return Ok(analysis);
+            }
+        }
+    }
+
+    /// Parse orchestrator's critique response
+    fn parse_critique_response(
+        response: &str,
+        retry_count: u32,
+        messages: &[Message],
+        file_status: &[FileStatus],
+        task_id: &str,
+        session_id: &str,
+    ) -> Result<WorkAnalysis> {
+        // Extract score
+        let quality = if let Some(score_line) = response.lines().find(|l| l.starts_with("SCORE:")) {
+            score_line
+                .trim_start_matches("SCORE:")
+                .trim()
+                .parse::<u8>()
+                .unwrap_or(50)
+                .min(100)
+        } else {
+            50
+        };
+
+        // Extract recommendation
+        let recommendation_str = response
+            .lines()
+            .find(|l| l.starts_with("RECOMMENDATION:"))
+            .and_then(|l| l.trim_start_matches("RECOMMENDATION:").trim().split_whitespace().next())
+            .unwrap_or("RETRY");
+
+        let mut recommendation = match recommendation_str.to_uppercase().as_str() {
+            "APPROVE" => Recommendation::Approve,
+            "ESCALATE" => Recommendation::Escalate,
+            _ => Recommendation::Retry,
+        };
+
+        // Override if max retries reached
+        if retry_count >= 3 && recommendation == Recommendation::Retry {
+            recommendation = Recommendation::Escalate;
+        }
+
+        // Extract feedback for retry
+        let feedback = if recommendation == Recommendation::Retry {
+            response
+                .lines()
+                .skip_while(|l| !l.starts_with("FEEDBACK:"))
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string()
+                .into()
+        } else {
+            None
+        };
+
+        // Basic checks
+        let has_changes = file_status.iter().any(|f| f.status == "modified" || f.status == "added");
         let tests_pass = !messages.iter().any(|msg| {
             msg.parts.iter().any(|part| {
                 if let MessagePart::Tool { tool, state, .. } = part {
@@ -253,30 +344,7 @@ impl Orchestrator {
             })
         });
 
-        // Use LLM to score quality
-        let work_summary = Self::summarize_messages(messages);
-        let quality = self.llm.score_quality(task_description, &work_summary).await?;
-
-        let anti_patterns = AntiPatternDetector::detect_all(
-            messages,
-            file_status,
-            task_id,
-            session_id,
-        );
-
-        let recommendation = if quality >= 70 && has_changes && tests_pass && anti_patterns.is_empty() {
-            Recommendation::Approve
-        } else if retry_count >= self.max_retries {
-            Recommendation::Escalate
-        } else {
-            Recommendation::Retry
-        };
-
-        let feedback = if recommendation == Recommendation::Retry {
-            Some(Self::generate_feedback(quality, has_changes, tests_pass, &anti_patterns))
-        } else {
-            None
-        };
+        let anti_patterns = AntiPatternDetector::detect_all(messages, file_status, task_id, session_id);
 
         Ok(WorkAnalysis {
             quality,

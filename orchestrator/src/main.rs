@@ -1,4 +1,5 @@
 mod detector;
+mod inverter;
 mod llm;
 mod opencode;
 mod orchestrator;
