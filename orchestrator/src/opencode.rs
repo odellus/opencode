@@ -1,6 +1,5 @@
 use anyhow::Result;
 use reqwest::Client;
-use serde_json::json;
 use tracing::{debug, info};
 
 use crate::types::*;
@@ -104,7 +103,7 @@ impl OpencodeClient {
 
         let last_msg = &messages[messages.len() - 1];
 
-        if last_msg.role != "assistant" {
+        if last_msg.info.role != "assistant" {
             return Ok(false);
         }
 

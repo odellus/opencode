@@ -172,7 +172,7 @@ impl Orchestrator {
             // Check if doer is asking a question or claiming done
             let last_msg = messages.last().context("No messages")?;
 
-            if last_msg.role == "assistant" {
+            if last_msg.info.role == "assistant" {
                 let text = Self::extract_text(&last_msg.parts);
 
                 // Check if asking question
@@ -194,7 +194,12 @@ impl Orchestrator {
                     info!("Doer claims task is done, reviewing...");
 
                     let task = &self.state.tasks[task_index];
-                    let analysis = self.analyze_work(task, &messages, &file_status).await?;
+                    let task_desc = task.description.clone();
+                    let task_id = task.id.clone();
+                    let session_id = task.session_id.clone().unwrap();
+                    let retry_count = task.retry_count;
+
+                    let analysis = self.analyze_work(&task_desc, &task_id, &session_id, retry_count, &messages, &file_status).await?;
 
                     match analysis.recommendation {
                         Recommendation::Approve => {
@@ -222,8 +227,11 @@ impl Orchestrator {
     }
 
     async fn analyze_work(
-        &self,
-        task: &Task,
+        &mut self,
+        task_description: &str,
+        task_id: &str,
+        session_id: &str,
+        retry_count: u32,
         messages: &[Message],
         file_status: &[FileStatus],
     ) -> Result<WorkAnalysis> {
@@ -247,18 +255,18 @@ impl Orchestrator {
 
         // Use LLM to score quality
         let work_summary = Self::summarize_messages(messages);
-        let quality = self.llm.score_quality(&task.description, &work_summary).await?;
+        let quality = self.llm.score_quality(task_description, &work_summary).await?;
 
         let anti_patterns = AntiPatternDetector::detect_all(
             messages,
             file_status,
-            &task.id,
-            task.session_id.as_ref().unwrap(),
+            task_id,
+            session_id,
         );
 
         let recommendation = if quality >= 70 && has_changes && tests_pass && anti_patterns.is_empty() {
             Recommendation::Approve
-        } else if task.retry_count >= self.max_retries {
+        } else if retry_count >= self.max_retries {
             Recommendation::Escalate
         } else {
             Recommendation::Retry
@@ -298,7 +306,7 @@ impl Orchestrator {
         let mut summary = String::new();
 
         for msg in messages.iter().rev().take(10) {
-            summary.push_str(&format!("{}: ", msg.role));
+            summary.push_str(&format!("{}: ", msg.info.role));
 
             for part in &msg.parts {
                 match part {

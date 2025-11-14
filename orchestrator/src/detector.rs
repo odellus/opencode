@@ -46,7 +46,7 @@ impl AntiPatternDetector {
         let mut mock_count = 0;
 
         for msg in messages.iter().rev().take(10) {
-            if msg.role != "assistant" {
+            if msg.info.role != "assistant" {
                 continue;
             }
 
@@ -89,7 +89,7 @@ impl AntiPatternDetector {
         let mut bash_commands = Vec::new();
 
         for msg in messages.iter().rev().take(10) {
-            if msg.role != "assistant" {
+            if msg.info.role != "assistant" {
                 continue;
             }
 
@@ -132,7 +132,7 @@ impl AntiPatternDetector {
         let mut has_debug_output = false;
 
         for msg in messages.iter().rev().take(10) {
-            if msg.role != "assistant" {
+            if msg.info.role != "assistant" {
                 continue;
             }
 
@@ -186,7 +186,7 @@ impl AntiPatternDetector {
 
         let last_msg = &messages[messages.len() - 1];
 
-        if last_msg.role != "assistant" {
+        if last_msg.info.role != "assistant" {
             return None;
         }
 
@@ -235,7 +235,7 @@ impl AntiPatternDetector {
 
         let assistant_messages: Vec<&Message> = recent
             .iter()
-            .filter(|m| m.role == "assistant")
+            .filter(|m| m.info.role == "assistant")
             .copied()
             .collect();
 

@@ -20,22 +20,6 @@ struct Args {
     /// OpenCode server URL
     #[arg(short, long, default_value = "http://localhost:4096")]
     opencode_url: String,
-
-    /// OpenRouter API key (or set OPENROUTER_API_KEY env var)
-    #[arg(long)]
-    openrouter_api_key: Option<String>,
-
-    /// Model to use (default: free grok-beta)
-    #[arg(short, long, default_value = "google/gemini-2.0-flash-exp:free")]
-    model: String,
-
-    /// Use local LLM instead of OpenRouter
-    #[arg(long)]
-    local_llm: bool,
-
-    /// Local LLM base URL (e.g., http://192.168.1.175:1234/v1)
-    #[arg(long, default_value = "http://192.168.1.175:1234/v1")]
-    local_llm_url: String,
 }
 
 #[tokio::main]
@@ -49,19 +33,9 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    // Create LLM client
-    let llm = if args.local_llm {
-        tracing::info!("Using local LLM at {}", args.local_llm_url);
-        llm::LLMClient::new_local(&args.local_llm_url, &args.model)
-    } else {
-        let api_key = args
-            .openrouter_api_key
-            .or_else(|| std::env::var("OPENROUTER_API_KEY").ok())
-            .expect("OpenRouter API key required (set OPENROUTER_API_KEY or use --openrouter-api-key)");
-
-        tracing::info!("Using OpenRouter with model: {}", args.model);
-        llm::LLMClient::new_openrouter(api_key, &args.model)
-    };
+    // Create LLM client using OpenCode's built-in model
+    tracing::info!("Using OpenCode server at {} for LLM calls", args.opencode_url);
+    let llm = llm::LLMClient::new(&args.opencode_url)?;
 
     // Create and run orchestrator
     let mut orchestrator = Orchestrator::new(&args.opencode_url, llm, &args.task)?;

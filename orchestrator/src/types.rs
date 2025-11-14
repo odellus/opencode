@@ -83,11 +83,22 @@ pub struct SessionTime {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    pub info: MessageInfo,
+    pub parts: Vec<MessagePart>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageInfo {
     pub id: String,
     #[serde(rename = "sessionID")]
     pub session_id: String,
     pub role: String,
-    pub parts: Vec<MessagePart>,
+    pub time: MessageTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageTime {
+    pub created: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

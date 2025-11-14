@@ -1,72 +1,83 @@
-use anyhow::Result;
-use async_openai::{
-    config::OpenAIConfig,
-    types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestUserMessageArgs,
-        CreateChatCompletionRequestArgs,
-    },
-    Client,
-};
+use anyhow::{Context, Result};
+use tokio::time::{sleep, Duration};
 use tracing::{debug, info};
 
+use crate::{opencode::OpencodeClient, types::MessagePart};
+
 pub struct LLMClient {
-    client: Client<OpenAIConfig>,
-    model: String,
+    opencode: OpencodeClient,
+    session_id: Option<String>,
 }
 
 impl LLMClient {
-    /// Create client for OpenRouter (free models)
-    pub fn new_openrouter(api_key: impl Into<String>, model: impl Into<String>) -> Self {
-        let config = OpenAIConfig::new()
-            .with_api_key(api_key)
-            .with_api_base("https://openrouter.ai/api/v1");
-
-        Self {
-            client: Client::with_config(config),
-            model: model.into(),
-        }
+    /// Create client that uses OpenCode's built-in model
+    pub fn new(opencode_url: impl Into<String>) -> Result<Self> {
+        let opencode = OpencodeClient::new(opencode_url)?;
+        Ok(Self {
+            opencode,
+            session_id: None,
+        })
     }
 
-    /// Create client for local llama-server
-    pub fn new_local(base_url: impl Into<String>, model: impl Into<String>) -> Self {
-        let config = OpenAIConfig::new()
-            .with_api_key("dummy") // llama-server doesn't need key
-            .with_api_base(base_url);
-
-        Self {
-            client: Client::with_config(config),
-            model: model.into(),
+    /// Ensure we have a session for orchestrator's own LLM calls
+    async fn ensure_session(&mut self) -> Result<String> {
+        if let Some(ref session_id) = self.session_id {
+            return Ok(session_id.clone());
         }
+
+        let session = self.opencode.create_session(None).await?;
+        info!("Created orchestrator LLM session: {}", session.id);
+        self.session_id = Some(session.id.clone());
+        Ok(session.id)
     }
 
-    pub async fn generate(&self, prompt: impl Into<String>) -> Result<String> {
+    pub async fn generate(&mut self, prompt: impl Into<String>) -> Result<String> {
         let prompt = prompt.into();
         debug!("Generating response for prompt: {}", prompt);
 
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&self.model)
-            .messages(vec![ChatCompletionRequestMessage::User(
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(prompt)
-                    .build()?,
-            )])
-            .build()?;
+        let session_id = self.ensure_session().await?;
 
-        let response = self.client.chat().create(request).await?;
+        // Send prompt to OpenCode
+        self.opencode.send_message(&session_id, prompt).await?;
 
-        let content = response
-            .choices
-            .first()
-            .and_then(|choice| choice.message.content.clone())
-            .unwrap_or_default();
+        // Poll until we get a response
+        loop {
+            sleep(Duration::from_secs(2)).await;
 
-        info!("Generated response: {}", content);
+            let is_idle = self.opencode.is_doer_idle(&session_id).await?;
+            if !is_idle {
+                continue;
+            }
 
-        Ok(content)
+            // Get the response
+            let messages = self.opencode.get_messages(&session_id).await?;
+            let last_msg = messages.last().context("No messages in LLM session")?;
+
+            if last_msg.info.role == "assistant" {
+                // Extract text from message parts
+                let text = Self::extract_text(&last_msg.parts);
+                info!("Generated response: {}", text);
+                return Ok(text);
+            }
+        }
+    }
+
+    fn extract_text(parts: &[MessagePart]) -> String {
+        parts
+            .iter()
+            .filter_map(|part| {
+                if let MessagePart::Text { text } = part {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// Break project into tasks
-    pub async fn break_into_tasks(&self, project_description: &str) -> Result<Vec<String>> {
+    pub async fn break_into_tasks(&mut self, project_description: &str) -> Result<Vec<String>> {
         let prompt = format!(
             r#"Break this project into 3-5 concrete, ordered tasks:
 
@@ -89,7 +100,7 @@ No other text."#,
 
     /// Answer doer's question
     pub async fn answer_question(
-        &self,
+        &mut self,
         task_description: &str,
         question: &str,
     ) -> Result<String> {
@@ -107,7 +118,7 @@ Be direct and practical."#,
     }
 
     /// Score quality of work
-    pub async fn score_quality(&self, task_description: &str, work_summary: &str) -> Result<u8> {
+    pub async fn score_quality(&mut self, task_description: &str, work_summary: &str) -> Result<u8> {
         let prompt = format!(
             r#"Task: {}
 
