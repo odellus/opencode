@@ -4,6 +4,7 @@ import { Todo } from "../session/todo"
 import { MessageV2 } from "../session/message-v2"
 import { SessionPrompt } from "../session/prompt"
 import { Log } from "../util/log"
+import { Identifier } from "../id/id"
 
 const log = Log.create({ service: "orchestrator" })
 
@@ -126,7 +127,7 @@ export namespace Orchestrator {
   }
 
   /**
-   * Send feedback message to doer session
+   * Send feedback message to doer session (bypass plugins, direct message creation)
    */
   async function sendFeedbackToDoer(sessionID: string, feedback: string) {
     log.info("sending feedback to doer", {
@@ -134,14 +135,38 @@ export namespace Orchestrator {
       feedback,
     })
 
-    await SessionPrompt.prompt({
+    // Create message directly to avoid plugin loading delays
+    const messageID = Identifier.ascending("message")
+    const partID = Identifier.ascending("part")
+
+    const messageInfo: MessageV2.Info = {
+      id: messageID,
+      role: "user",
       sessionID,
-      parts: [
-        {
-          type: "text",
-          text: feedback,
-        },
-      ],
+      time: {
+        created: Date.now(),
+      },
+    }
+
+    const part: MessageV2.TextPart = {
+      id: partID,
+      messageID,
+      sessionID,
+      type: "text",
+      text: `🔍 Orchestrator Feedback: ${feedback}`,
+      synthetic: true,
+      time: {
+        start: Date.now(),
+        end: Date.now(),
+      },
+    }
+
+    await Session.updateMessage(messageInfo)
+    await Session.updatePart(part)
+
+    log.info("feedback sent", {
+      session: sessionID,
+      messageID,
     })
   }
 
