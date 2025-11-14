@@ -99,6 +99,10 @@ NOTE: To speed things up, you can mark all 3 tasks as "in_progress" simultaneous
         // NO noReply: true - let the LLM actually execute!
         const promptResult = await SessionPrompt.prompt({
           sessionID: doerSessionID,
+          model: {
+            providerID: "openrouter",
+            modelID: "zhiai/glm-4.5-air:free",
+          },
           agent: "build", // Use actual build agent
           parts: [
             {

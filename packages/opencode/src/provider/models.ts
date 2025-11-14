@@ -64,8 +64,65 @@ export namespace ModelsDev {
     const file = Bun.file(filepath)
     const result = await file.json().catch(() => {})
     if (result) return result as Record<string, Provider>
-    // Fallback: return empty if cache doesn't exist and fetch fails
-    return {}
+    // Fallback: return minimal providers if cache doesn't exist
+    return {
+      opencode: {
+        id: "opencode",
+        name: "OpenCode Free",
+        api: "https://api.opencode.ai/v1",
+        env: [],
+        models: {
+          "claude-3-5-sonnet-20250107": {
+            id: "claude-3-5-sonnet-20250107",
+            name: "Claude 3.5 Sonnet",
+            release_date: "2025-01-07",
+            attachment: true,
+            reasoning: false,
+            temperature: true,
+            tool_call: true,
+            cost: {
+              input: 0,
+              output: 0,
+              cache_read: 0,
+              cache_write: 0,
+            },
+            limit: {
+              context: 200000,
+              output: 8192,
+            },
+            options: {},
+          },
+        },
+      },
+      openrouter: {
+        id: "openrouter",
+        name: "OpenRouter",
+        api: "https://openrouter.ai/api/v1",
+        env: ["OPENROUTER_API_KEY"],
+        models: {
+          "zhiai/glm-4-air": {
+            id: "zhiai/glm-4-air",
+            name: "GLM-4 Air",
+            release_date: "2024-01-01",
+            attachment: false,
+            reasoning: false,
+            temperature: true,
+            tool_call: true,
+            cost: {
+              input: 0,
+              output: 0,
+              cache_read: 0,
+              cache_write: 0,
+            },
+            limit: {
+              context: 8192,
+              output: 4096,
+            },
+            options: {},
+          },
+        },
+      },
+    }
   }
 
   export async function refresh() {
