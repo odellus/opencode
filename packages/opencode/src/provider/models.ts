@@ -2,7 +2,6 @@ import { Global } from "../global"
 import { Log } from "../util/log"
 import path from "path"
 import z from "zod"
-import { data } from "./models-macro" with { type: "macro" }
 import { Installation } from "../installation"
 
 export namespace ModelsDev {
@@ -61,12 +60,12 @@ export namespace ModelsDev {
   export type Provider = z.infer<typeof Provider>
 
   export async function get() {
-    refresh()
+    await refresh()
     const file = Bun.file(filepath)
     const result = await file.json().catch(() => {})
     if (result) return result as Record<string, Provider>
-    const json = await data()
-    return JSON.parse(json) as Record<string, Provider>
+    // Fallback: return empty if cache doesn't exist and fetch fails
+    return {}
   }
 
   export async function refresh() {
