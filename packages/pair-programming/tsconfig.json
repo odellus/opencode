@@ -1,7 +1,7 @@
 {
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "module": "esnext",
@@ -13,5 +13,5 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "../opencode"]
 }

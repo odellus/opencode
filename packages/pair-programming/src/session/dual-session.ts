@@ -103,7 +103,6 @@ export namespace DualSession {
               system: agentConfig.systemPrompt,
               messages,
               tools,
-              maxSteps: 10,
               experimental_telemetry: {
                 isEnabled: true,
                 functionId: `dual-session-${conversationId}-turn-${turnCount}`,
@@ -125,8 +124,8 @@ export namespace DualSession {
                 toolCalls.push({
                   id: part.toolCallId,
                   name: part.toolName,
-                  input: part.args as Record<string, any>,
-                  output: typeof part.result === "string" ? part.result : JSON.stringify(part.result),
+                  input: part.input as Record<string, any>,
+                  output: typeof part.output === "string" ? part.output : JSON.stringify(part.output),
                   timestamp: Date.now(),
                 })
               }

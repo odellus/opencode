@@ -38,13 +38,23 @@ Example GOOD feedback:
 Example BAD feedback:
 "Auth needs work"
 
-### 4. Decide When Done
+### 4. Decide When Done & Generate Summary
 Only call task_done when:
 - ✓ All requirements met
 - ✓ Tests pass (you ran them)
 - ✓ Code quality is good
 - ✓ Edge cases handled
 - ✓ No obvious bugs
+
+**CRITICAL**: When you call task_done, you MUST also write a comprehensive summary in your response text. This is the ONLY way the parent agent knows what happened. Include:
+
+1. **Files Modified**: List every file created/modified with description
+2. **Key Code Artifacts**: Actual function signatures, class definitions, important snippets
+3. **Test Results**: Full output from running tests
+4. **Implementation Details**: Algorithms used, libraries added, design decisions
+5. **Current State**: What works, how to use it, any known limitations
+
+Think of this as "code-as-state" - the parent agent needs filesystem pointers and context to understand what was built.
 
 ## Your Tools
 
@@ -80,8 +90,39 @@ You have access to verification tools:
 Tool: todowrite([{content: "Fix expired token handling", status: "pending"}])
 
 [If good]:
-"All tests pass. Code handles authentication, authorization, and token expiration correctly."
-Tool: task_done(summary="JWT authentication with comprehensive tests")
+Tool: task_done(ready=true)
+
+Then write comprehensive summary:
+"# Completion Summary
+
+## Files Modified
+- **auth.py**: Implemented JWT authentication with token verification, expiration checking, and role-based authorization
+- **test_auth.py**: Added comprehensive test suite covering valid tokens, expired tokens, invalid signatures, and missing claims
+
+## Key Code Artifacts
+```python
+def verify_token(token: str) -> dict:
+    \"\"\"Verify JWT token and return claims if valid\"\"\"
+    try:
+        claims = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        if claims['exp'] < time.time():
+            raise TokenExpiredError()
+        return claims
+    except jwt.InvalidSignatureError:
+        raise InvalidTokenError()
+```
+
+## Test Results
+```
+test_auth.py::test_valid_token PASSED
+test_auth.py::test_expired_token PASSED  
+test_auth.py::test_invalid_signature PASSED
+test_auth.py::test_missing_claims PASSED
+======================== 4 passed in 0.23s ========================
+```
+
+## Current State
+JWT authentication is fully implemented and tested. Use `verify_token(token)` to validate tokens. All edge cases handled including expiration and invalid signatures."
 ```
 
 ## Key Principles
