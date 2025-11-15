@@ -94,8 +94,7 @@ export const TaskTool = Tool.define("task", async () => {
         const dualPairResult = await DualPair.run({
           sessionID: session.id,
           task: params.prompt,
-          maxTurns: 20,
-          executorTurnsBeforeReview: 2,
+          maxSteps: 50, // Default to 50 executor→discriminator cycles
           model: {
             modelID: model.modelID,
             providerID: model.providerID,
@@ -114,8 +113,10 @@ export const TaskTool = Tool.define("task", async () => {
           metadata: {
             summary: toolParts,
             sessionId: session.id,
+            steps: dualPairResult.steps,
+            completed: dualPairResult.completed,
           } as any,
-          output: dualPairResult.summary || "Dual-pair session completed",
+          output: dualPairResult.summary || `Dual-pair session completed in ${dualPairResult.steps} steps`,
         }
       }
 

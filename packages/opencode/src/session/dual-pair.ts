@@ -2,8 +2,10 @@ import { Session } from "../session"
 import { SessionPrompt } from "./prompt"
 import { MessageV2 } from "./message-v2"
 import { DualPairPerspective } from "./dual-pair-perspective"
+import { SessionExport } from "./export"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
+import { Instance } from "../project/instance"
 
 export namespace DualPair {
   const log = Log.create({ service: "dual-pair" })
@@ -11,17 +13,17 @@ export namespace DualPair {
   export interface Config {
     sessionID: string
     task: string
-    maxTurns: number
-    executorTurnsBeforeReview?: number
+    maxSteps?: number // Max executor->discriminator cycles (default 50)
     model?: {
       providerID: string
       modelID: string
     }
+    exportPath?: string // Optional path for markdown export
   }
 
   export interface Result {
     sessionID: string
-    turnCount: number
+    steps: number // Number of complete executor->discriminator cycles
     completed: boolean
     summary?: string
   }
@@ -34,42 +36,63 @@ export namespace DualPair {
    * of the conversation through role inversion.
    */
   export async function run(config: Config): Promise<Result> {
-    const { sessionID, task, maxTurns, model } = config
-    const executorTurnsBeforeReview = config.executorTurnsBeforeReview ?? 2
+    const { sessionID, task, model } = config
+    const maxSteps = config.maxSteps ?? 50
+
+    // Setup markdown export
+    const exportPath = config.exportPath ?? SessionExport.getDefaultPath(sessionID, Instance.directory)
 
     log.info("starting dual-pair session", {
       sessionID,
       task: task.slice(0, 100),
-      maxTurns,
+      maxSteps,
+      exportPath,
+    })
+
+    // Initial export
+    await SessionExport.writeToFile(sessionID, exportPath).catch((err) => {
+      log.error("failed to export session", { error: err })
     })
 
     let currentAgent: "executor" | "discriminator" = "executor"
-    let turnCount = 0
-    let executorTurnsSinceReview = 0
+    let steps = 0 // A step = executor work + discriminator review
 
-    while (turnCount < maxTurns) {
+    while (steps < maxSteps) {
       // Get current conversation state
       const messages = await Session.messages({ sessionID })
 
-      // Check if discriminator marked task as done
+      // Check if discriminator marked task as done (happens AFTER discriminator's turn)
       const session = await Session.get(sessionID)
       if ((session.metadata as any)?.dualPairComplete) {
         log.info("dual-pair completed by discriminator", {
           sessionID,
-          turnCount,
-          summary: (session.metadata as any).completionSummary,
+          steps,
         })
+
+        // Get discriminator's final text response as the summary
+        const lastMessage = messages[messages.length - 1]
+        const summary =
+          lastMessage?.parts
+            .filter((p) => p.type === "text")
+            .map((p) => (p.type === "text" ? p.text : ""))
+            .join("\n") || "Task completed"
+
+        // Update export with final state
+        await SessionExport.writeToFile(sessionID, exportPath).catch((err) => {
+          log.error("failed to export final session", { error: err })
+        })
+
         return {
           sessionID,
-          turnCount,
+          steps,
           completed: true,
-          summary: (session.metadata as any).completionSummary as string,
+          summary,
         }
       }
 
       if (currentAgent === "executor") {
         // Executor's turn - do the work
-        log.info("executor turn", { sessionID, turnCount })
+        log.info("executor turn", { sessionID, step: steps })
 
         const executorView = DualPairPerspective.transformForExecutor(messages)
 
@@ -82,25 +105,20 @@ export namespace DualPair {
           parts: [
             {
               type: "text",
-              text: turnCount === 0 ? task : "Continue working on the task based on feedback",
+              text: steps === 0 ? task : "Continue working on the task based on feedback",
               metadata: {
                 dualPairAgent: "executor",
+                dualPairStep: steps,
               },
             },
           ],
         })
 
-        turnCount++
-        executorTurnsSinceReview++
-
-        // Switch to discriminator after N executor turns
-        if (executorTurnsSinceReview >= executorTurnsBeforeReview) {
-          currentAgent = "discriminator"
-          executorTurnsSinceReview = 0
-        }
+        // Always switch to discriminator after executor
+        currentAgent = "discriminator"
       } else {
         // Discriminator's turn - review and provide feedback
-        log.info("discriminator turn", { sessionID, turnCount })
+        log.info("discriminator turn", { sessionID, step: steps })
 
         const discriminatorView = DualPairPerspective.transformForDiscriminator(messages)
 
@@ -126,25 +144,28 @@ export namespace DualPair {
               text: "Review the executor's work. Provide specific feedback, run tests if needed, or use task_done if everything is satisfactory.",
               metadata: {
                 dualPairAgent: "discriminator",
+                dualPairStep: steps,
               },
             },
           ],
         })
 
-        turnCount++
+        // Discriminator response completes the step (trae-agent style)
+        steps++
         currentAgent = "executor"
       }
     }
 
-    // Max turns reached without completion
-    log.warn("dual-pair hit max turns without completion", {
+    // Max steps reached without completion
+    log.warn("dual-pair hit max steps without completion", {
       sessionID,
-      maxTurns,
+      maxSteps,
+      steps,
     })
 
     return {
       sessionID,
-      turnCount,
+      steps,
       completed: false,
     }
   }

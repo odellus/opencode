@@ -32,8 +32,7 @@ async function testDualPair() {
         agent: "build",
         model: {
           providerID: "lmstudio",
-          modelID:
-            "/home/thomas-wood/.cache/llama.cpp/unsloth_GLM-4.5-Air-GGUF_Q4_K_M_GLM-4.5-Air-Q4_K_M-00001-of-00002.gguf",
+          modelID: "glm-4.5-air@q4_k_m",
         },
         parts: [
           {
