@@ -41,6 +41,8 @@ import { TuiEvent } from "@/cli/cmd/tui/event"
 import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "@/session/summary"
 import { GlobalBus } from "@/bus/global"
+import { Langfuse } from "../observability/langfuse"
+import { DualSessionRoute } from "../../../pair-programming/src/server/route"
 
 const ERRORS = {
   400: {
@@ -194,6 +196,7 @@ export namespace Server {
       )
       .use(validator("query", z.object({ directory: z.string().optional() })))
       .route("/project", ProjectRoute)
+      .route("/dual-session", DualSessionRoute)
       .get(
         "/config",
         describeRoute({
@@ -1827,12 +1830,22 @@ export namespace Server {
   }
 
   export function listen(opts: { port: number; hostname: string }) {
+    // Initialize Langfuse for observability
+    Langfuse.init()
+
     const server = Bun.serve({
       port: opts.port,
       hostname: opts.hostname,
       idleTimeout: 0,
       fetch: App().fetch,
     })
+
+    // Flush Langfuse on shutdown
+    process.on("SIGTERM", async () => {
+      await Langfuse.shutdown()
+      process.exit(0)
+    })
+
     return server
   }
 }

@@ -7,6 +7,24 @@
         "zhiai/glm-4.5-air:free": {},
         "zhiai/glm-4-air": {}
       }
+    },
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio (local)",
+      "options": {
+        "baseURL": "http://192.168.1.175:1234/v1",
+        "apiKey": "lm-studio"
+      },
+      "models": {
+        "glm-4.5-air@q4_k_m": {
+          "name": "GLM 4.5 Air Q4",
+          "options": {
+            "extra_body": {
+              "cache_prompt": true
+            }
+          }
+        }
+      }
     }
   }
 }

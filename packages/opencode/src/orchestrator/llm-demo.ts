@@ -100,8 +100,8 @@ NOTE: To speed things up, you can mark all 3 tasks as "in_progress" simultaneous
         const promptResult = await SessionPrompt.prompt({
           sessionID: doerSessionID,
           model: {
-            providerID: "openrouter",
-            modelID: "zhiai/glm-4.5-air:free",
+            providerID: "lmstudio",
+            modelID: "glm-4.5-air@q4_k_m",
           },
           agent: "build", // Use actual build agent
           parts: [
@@ -132,9 +132,10 @@ NOTE: To speed things up, you can mark all 3 tasks as "in_progress" simultaneous
         const messages = await checkMessages(doerSessionID)
         console.log(`\nMessages in session: ${messages.length}`)
 
-        const feedbackMessages = messages.filter((m) =>
-          m.info.role === "user" &&
-          m.parts.some(p => p.type === "text" && "text" in p && p.text.includes("Orchestrator Feedback"))
+        const feedbackMessages = messages.filter(
+          (m) =>
+            m.info.role === "user" &&
+            m.parts.some((p) => p.type === "text" && "text" in p && p.text.includes("Orchestrator Feedback")),
         )
 
         console.log(`Orchestrator feedback messages: ${feedbackMessages.length}`)
@@ -172,7 +173,7 @@ NOTE: To speed things up, you can mark all 3 tasks as "in_progress" simultaneous
         // Step 5: Analysis
         console.log(`\n=== Analysis ===`)
 
-        const inProgressTodos = todos.filter(t => t.status === "in_progress")
+        const inProgressTodos = todos.filter((t) => t.status === "in_progress")
         if (inProgressTodos.length > 1) {
           console.log(`✓ Anti-pattern detected: ${inProgressTodos.length} tasks in progress`)
           console.log(`✓ Orchestrator should have sent feedback`)

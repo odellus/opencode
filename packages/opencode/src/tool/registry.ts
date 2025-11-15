@@ -5,6 +5,7 @@ import { GrepTool } from "./grep"
 import { ListTool } from "./ls"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
+import { TaskDoneTool } from "./task-done"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
@@ -94,6 +95,7 @@ export namespace ToolRegistry {
       TodoWriteTool,
       TodoReadTool,
       TaskTool,
+      TaskDoneTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_EXA ? [WebSearchTool, CodeSearchTool] : []),
       ...custom,
     ]

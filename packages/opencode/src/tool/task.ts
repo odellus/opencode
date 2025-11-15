@@ -8,6 +8,7 @@ import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { SessionLock } from "../session/lock"
 import { SessionPrompt } from "../session/prompt"
+import { DualPair } from "../session/dual-pair"
 
 export const TaskTool = Tool.define("task", async () => {
   const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
@@ -27,9 +28,30 @@ export const TaskTool = Tool.define("task", async () => {
     async execute(params, ctx) {
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+
+      // Enforce subagent restrictions
+      const callingAgent = ctx.agent
+      if (callingAgent === "supervisor" || callingAgent === "orchestrator") {
+        if (params.subagent_type !== "build") {
+          throw new Error(
+            `${callingAgent} can only delegate to BUILD agent. Attempted to invoke: ${params.subagent_type}`,
+          )
+        }
+      }
+      if (callingAgent === "architect") {
+        if (params.subagent_type !== "supervisor" && params.subagent_type !== "orchestrator") {
+          throw new Error(
+            `architect can only delegate to SUPERVISOR/ORCHESTRATOR agent. Attempted to invoke: ${params.subagent_type}`,
+          )
+        }
+      }
       const session = await Session.create({
         parentID: ctx.sessionID,
         title: params.description + ` (@${agent.name} subagent)`,
+        metadata: {
+          includeParentContext: true,
+          includeSiblingContext: true,
+        },
       })
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
@@ -65,6 +87,39 @@ export const TaskTool = Tool.define("task", async () => {
       ctx.abort.addEventListener("abort", () => {
         SessionLock.abort(session.id)
       })
+
+      // Check if this is a dual-pair subagent
+      if (params.subagent_type === "dual-pair") {
+        // Run dual-pair executor/discriminator loop
+        const dualPairResult = await DualPair.run({
+          sessionID: session.id,
+          task: params.prompt,
+          maxTurns: 20,
+          executorTurnsBeforeReview: 2,
+          model: {
+            modelID: model.modelID,
+            providerID: model.providerID,
+          },
+        })
+
+        unsub()
+
+        // Get all tool calls from the session
+        let all = await Session.messages({ sessionID: session.id })
+        all = all.filter((x) => x.info.role === "assistant")
+        const toolParts = all.flatMap((msg) => msg.parts.filter((x: any) => x.type === "tool") as MessageV2.ToolPart[])
+
+        return {
+          title: params.description,
+          metadata: {
+            summary: toolParts,
+            sessionId: session.id,
+          } as any,
+          output: dualPairResult.summary || "Dual-pair session completed",
+        }
+      }
+
+      // Normal single-agent flow
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
       const result = await SessionPrompt.prompt({
         messageID,

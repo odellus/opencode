@@ -306,6 +306,16 @@ export namespace SessionPrompt {
       })
       const doStream = () =>
         streamText({
+          experimental_telemetry: {
+            isEnabled: true,
+            functionId: `session-${input.sessionID}`,
+            metadata: {
+              sessionId: input.sessionID,
+              agent: agent.name,
+              modelId: model.info.id,
+              providerId: model.providerID,
+            },
+          },
           onError(error) {
             log.error("stream error", {
               error,
@@ -485,7 +495,60 @@ export namespace SessionPrompt {
     providerID: string
     signal: AbortSignal
   }) {
+    const session = await Session.get(input.sessionID)
     let msgs = await MessageV2.filterCompacted(MessageV2.stream(input.sessionID))
+
+    // Context injection: Include parent and/or sibling messages if configured
+    if (session.parentID && (session.metadata?.includeParentContext || session.metadata?.includeSiblingContext)) {
+      const contextMsgs: MessageV2.WithParts[] = []
+
+      // Include parent session messages
+      if (session.metadata.includeParentContext) {
+        const parentMsgs = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
+        contextMsgs.push(...parentMsgs)
+      }
+
+      // Include sibling session messages
+      if (session.metadata.includeSiblingContext) {
+        const siblings = await Session.children(session.parentID)
+        for (const sibling of siblings) {
+          if (sibling.id === input.sessionID) continue
+          const siblingMsgs = await MessageV2.filterCompacted(MessageV2.stream(sibling.id))
+          contextMsgs.push(...siblingMsgs)
+        }
+      }
+
+      // Prepend context messages to current session messages
+      if (contextMsgs.length > 0) {
+        const contextIntroMsgID = Identifier.ascending("message")
+        const contextIntroMsg: MessageV2.WithParts = {
+          info: await Session.updateMessage({
+            id: contextIntroMsgID,
+            role: "user",
+            sessionID: input.sessionID,
+            time: {
+              created: Date.now(),
+            },
+          }),
+          parts: [
+            await Session.updatePart({
+              type: "text",
+              sessionID: input.sessionID,
+              messageID: contextIntroMsgID,
+              id: Identifier.ascending("part"),
+              text: "The following messages provide context from related conversations. Use this context to inform your responses.",
+              time: {
+                start: Date.now(),
+                end: Date.now(),
+              },
+              synthetic: true,
+            }),
+          ],
+        }
+        msgs = [contextIntroMsg, ...contextMsgs, ...msgs]
+      }
+    }
+
     const lastAssistant = msgs.findLast((msg) => msg.info.role === "assistant")
     if (
       lastAssistant?.info.role === "assistant" &&
@@ -1847,6 +1910,16 @@ export namespace SessionPrompt {
       }
     }
     await generateText({
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: `title-generation-${input.session.id}`,
+        metadata: {
+          sessionId: input.session.id,
+          operation: "title-generation",
+          modelId: small.modelID,
+          providerId: small.providerID,
+        },
+      },
       maxOutputTokens: small.info.reasoning ? 1500 : 20,
       providerOptions: ProviderTransform.providerOptions(small.npm, small.providerID, options),
       messages: [

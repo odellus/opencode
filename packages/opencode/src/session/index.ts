@@ -68,6 +68,13 @@ export namespace Session {
           diff: z.string().optional(),
         })
         .optional(),
+      metadata: z
+        .object({
+          includeParentContext: z.boolean().optional(),
+          includeSiblingContext: z.boolean().optional(),
+          conversationThread: z.string().optional(),
+        })
+        .optional(),
     })
     .meta({
       ref: "Session",
@@ -124,6 +131,13 @@ export namespace Session {
       .object({
         parentID: Identifier.schema("session").optional(),
         title: z.string().optional(),
+        metadata: z
+          .object({
+            includeParentContext: z.boolean().optional(),
+            includeSiblingContext: z.boolean().optional(),
+            conversationThread: z.string().optional(),
+          })
+          .optional(),
       })
       .optional(),
     async (input) => {
@@ -131,6 +145,7 @@ export namespace Session {
         parentID: input?.parentID,
         directory: Instance.directory,
         title: input?.title,
+        metadata: input?.metadata,
       })
     },
   )
@@ -172,7 +187,17 @@ export namespace Session {
     })
   })
 
-  export async function createNext(input: { id?: string; title?: string; parentID?: string; directory: string }) {
+  export async function createNext(input: {
+    id?: string
+    title?: string
+    parentID?: string
+    directory: string
+    metadata?: {
+      includeParentContext?: boolean
+      includeSiblingContext?: boolean
+      conversationThread?: string
+    }
+  }) {
     const result: Info = {
       id: Identifier.descending("session", input.id),
       version: Installation.VERSION,
@@ -184,6 +209,7 @@ export namespace Session {
         created: Date.now(),
         updated: Date.now(),
       },
+      metadata: input.metadata,
     }
     log.info("created", result)
     await Storage.write(["session", Instance.project.id, result.id], result)

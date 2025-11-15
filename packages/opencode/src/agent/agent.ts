@@ -3,6 +3,8 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { generateObject, type ModelMessage } from "ai"
 import PROMPT_GENERATE from "./generate.txt"
+import PROMPT_SUPERVISOR from "./supervisor.txt"
+import PROMPT_ARCHITECT from "./architect.txt"
 import { SystemPrompt } from "../session/system"
 import { Instance } from "../project/instance"
 import { mergeDeep } from "remeda"
@@ -119,7 +121,7 @@ export namespace Agent {
         tools: { ...defaultTools },
         options: {},
         permission: agentPermission,
-        mode: "primary",
+        mode: "all", // Can be primary OR subagent (delegatable)
         builtIn: true,
       },
       plan: {
@@ -131,6 +133,37 @@ export namespace Agent {
         },
         mode: "primary",
         builtIn: true,
+      },
+      supervisor: {
+        name: "supervisor",
+        description:
+          "Project coordinator that breaks work into tasks, delegates to workers, and verifies completion. Can make edits directly and coordinate complex multi-step projects.",
+        tools: {
+          ...defaultTools,
+          todowrite: true,
+          todoread: true,
+        },
+        options: {},
+        permission: agentPermission,
+        mode: "primary", // Available in TUI
+        builtIn: true,
+        prompt: PROMPT_SUPERVISOR,
+      },
+      architect: {
+        name: "architect",
+        description:
+          "Top-level agent that reads project specs from user, breaks them into phases, delegates to supervisor agents, monitors progress, and adapts strategy. Operates autonomously.",
+        tools: {
+          ...defaultTools,
+          todowrite: true,
+          todoread: true,
+          task: true,
+        },
+        options: {},
+        permission: agentPermission,
+        mode: "primary",
+        builtIn: true,
+        prompt: PROMPT_ARCHITECT,
       },
     }
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {

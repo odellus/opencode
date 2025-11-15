@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@opencode-ai/pair-programming",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Dual-agent pair programming system",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "dev": "bun run src/demo/simple.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^1.0.11",
+    "ai": "catalog:",
+    "zod": "catalog:",
+    "ulid": "catalog:",
+    "remeda": "catalog:",
+    "hono": "catalog:",
+    "hono-openapi": "1.1.1"
+  },
+  "peerDependencies": {
+    "opencode": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
